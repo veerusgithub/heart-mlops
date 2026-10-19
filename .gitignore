@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# MLflow
+mlruns/
+mlflow.db
+mlartifacts/
+
+# OS
+.DS_Store
+
+# Keep model_artifacts, data CSVs and figures tracked (needed for grading/serving).
+# If you prefer a lean repo, uncomment:
+# model_artifacts/
+# data/*.csv

@@ -1,0 +1,29 @@
+{
+  "best_model": "logistic_regression",
+  "best_params": {
+    "clf__C": 0.1,
+    "clf__solver": "lbfgs"
+  },
+  "selection_metric": "cv_roc_auc_mean",
+  "cv_roc_auc": 0.9113290091550962,
+  "holdout_roc_auc": 0.9610389610389611,
+  "sklearn_input_order": [
+    "age",
+    "trestbps",
+    "chol",
+    "thalach",
+    "oldpeak",
+    "ca",
+    "sex",
+    "cp",
+    "fbs",
+    "restecg",
+    "exang",
+    "slope",
+    "thal"
+  ],
+  "trained_on_rows": 303,
+  "sklearn_version": "1.9.1",
+  "python_version": "3.13.16",
+  "seed": 42
+}

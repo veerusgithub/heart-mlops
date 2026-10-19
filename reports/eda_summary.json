@@ -1,0 +1,25 @@
+{
+  "n_rows": 303,
+  "n_features": 13,
+  "missing_values_total": 6,
+  "missing_by_column": {
+    "ca": 4,
+    "thal": 2
+  },
+  "class_balance": {
+    "no_disease": 164,
+    "disease": 139,
+    "total": 303,
+    "disease_ratio": 0.4587
+  },
+  "top_target_correlations": {
+    "thal": 0.5257,
+    "ca": 0.4604,
+    "exang": 0.4319,
+    "oldpeak": 0.4245,
+    "thalach": -0.4172,
+    "cp": 0.4144,
+    "slope": 0.3392,
+    "sex": 0.2768
+  }
+}

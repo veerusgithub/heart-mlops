@@ -1,0 +1,211 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 1. Lint — fail the pipeline on syntax errors / undefined names.
+  # ---------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install linter
+        run: pip install flake8
+      - name: Lint (hard errors fail the build)
+        run: |
+          flake8 src app.py tests \
+            --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Lint (style, non-blocking)
+        run: |
+          flake8 src app.py tests \
+            --count --max-line-length=100 --statistics --exit-zero
+
+  # ---------------------------------------------------------------------
+  # 2. Test — unit tests for data processing + model/API code.
+  # ---------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download dataset
+        run: python src/download_data.py --out data/heart_raw.csv
+      - name: Train model (needed for API tests)
+        run: python src/train.py --data data/heart_raw.csv
+      - name: Run tests
+        run: python -m pytest tests/ -v --junitxml=reports/pytest.xml
+      - name: Upload test + model artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-model-artifacts
+          path: |
+            reports/
+            model_artifacts/
+            mlflow.db
+
+  # ---------------------------------------------------------------------
+  # 3. Train pipeline run — produces tracked artifacts for the run.
+  # ---------------------------------------------------------------------
+  train:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Data + EDA + Train
+        run: |
+          python src/download_data.py --out data/heart_raw.csv
+          python src/eda.py --data data/heart_raw.csv --outdir reports/figures
+          python src/train.py --data data/heart_raw.csv
+      - name: Upload training artifacts (model, plots, metrics, MLflow db)
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-artifacts
+          path: |
+            model_artifacts/
+            reports/
+            mlflow.db
+
+  # ---------------------------------------------------------------------
+  # 4. Docker build — verify the serving image builds (needs model).
+  # ---------------------------------------------------------------------
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: train
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Build model artifact for image
+        run: |
+          pip install -r requirements.txt
+          python src/download_data.py --out data/heart_raw.csv
+          python src/train.py --data data/heart_raw.csv
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: heart-api:ci
+          load: true
+      - name: Smoke-test the container
+        run: |
+          docker run -d --name heart_ci -p 8000:8000 heart-api:ci
+          sleep 12
+          curl -fsS http://localhost:8000/health
+          curl -fsS -X POST http://localhost:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"age":37,"sex":0,"cp":2,"trestbps":120,"chol":215,"fbs":0,"restecg":1,"thalach":170,"exang":0,"oldpeak":0.0,"slope":2,"ca":0,"thal":3}'
+          # Verify invalid input returns 422
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"age":37,"sex":0,"cp":2,"trestbps":120,"chol":215,"fbs":0,"restecg":1,"thalach":170,"exang":0,"oldpeak":0.0,"slope":2,"ca":0,"thal":2}')
+          [ "$HTTP_CODE" = "422" ] || { echo "FAIL: expected 422, got $HTTP_CODE"; exit 1; }
+          echo "Validation check: thal=2 correctly rejected with 422"
+          docker rm -f heart_ci
+
+  # ---------------------------------------------------------------------
+  # 5. Kubernetes deploy — spin up kind cluster, deploy, test endpoints.
+  # ---------------------------------------------------------------------
+  k8s-deploy:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Build model artifact
+        run: |
+          pip install -r requirements.txt
+          python src/download_data.py --out data/heart_raw.csv
+          python src/train.py --data data/heart_raw.csv
+      - name: Build Docker image
+        run: docker build -t heart-api:latest .
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: heart-ci
+      - name: Load image into kind
+        run: kind load docker-image heart-api:latest --name heart-ci
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f deployment/deployment.yaml
+          kubectl apply -f deployment/service.yaml
+          kubectl apply -f deployment/hpa.yaml
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/heart-api --timeout=120s
+      - name: Show cluster state
+        run: |
+          kubectl get pods,svc,hpa -o wide
+          echo "---"
+          kubectl describe deployment heart-api
+      - name: Port-forward and test API
+        run: |
+          kubectl port-forward svc/heart-api-service 8080:80 &
+          PF_PID=$!
+          sleep 10
+          echo "=== /health ==="
+          curl -fsS http://localhost:8080/health
+          echo ""
+          echo "=== /predict ==="
+          curl -fsS -X POST http://localhost:8080/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"age":63,"sex":1,"cp":1,"trestbps":145,"chol":233,"fbs":1,"restecg":2,"thalach":150,"exang":0,"oldpeak":2.3,"slope":3,"ca":0,"thal":6}'
+          echo ""
+          echo "=== /predict/batch ==="
+          curl -fsS -X POST http://localhost:8080/predict/batch \
+            -H 'Content-Type: application/json' \
+            -d '{"records":[{"age":63,"sex":1,"cp":1,"trestbps":145,"chol":233,"fbs":1,"restecg":2,"thalach":150,"exang":0,"oldpeak":2.3,"slope":3,"ca":0,"thal":6},{"age":67,"sex":1,"cp":4,"trestbps":160,"chol":286,"fbs":0,"restecg":2,"thalach":108,"exang":1,"oldpeak":1.5,"slope":2,"ca":3,"thal":3}]}'
+          echo ""
+          echo "=== validation (thal=2 should 422) ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"age":37,"sex":0,"cp":2,"trestbps":120,"chol":215,"fbs":0,"restecg":1,"thalach":170,"exang":0,"oldpeak":0.0,"slope":2,"ca":0,"thal":2}')
+          [ "$HTTP_CODE" = "422" ] || { echo "FAIL: expected 422, got $HTTP_CODE"; exit 1; }
+          echo "PASS: invalid thal=2 correctly rejected (422)"
+          kill $PF_PID 2>/dev/null || true
+      - name: Collect pod logs
+        if: always()
+        run: |
+          for pod in $(kubectl get pods -l app=heart-api -o name); do
+            echo "=== $pod ==="
+            kubectl logs "$pod" --tail=30
+          done
+      - name: Upload K8s evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-deployment-evidence
+          path: deployment/

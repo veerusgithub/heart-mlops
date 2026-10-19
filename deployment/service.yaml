@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: heart-api-service
+  labels:
+    app: heart-api
+spec:
+  # LoadBalancer for cloud (GKE/EKS/AKS). On Minikube use:
+  #   minikube service heart-api-service --url
+  type: LoadBalancer
+  selector:
+    app: heart-api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8000

@@ -1,0 +1,27 @@
+# Live API proof — real UCI Cleveland data, model: logistic_regression
+# captured 2026-10-18T07:03:37Z against uvicorn app:app
+
+$ curl -s localhost:8011/health
+{"status":"healthy","model_loaded":true}
+
+$ curl -s localhost:8011/
+{"service":"Heart Disease Risk Prediction API","version":"1.0.0","model":"logistic_regression","model_loaded":true,"docs":"/docs"}
+
+$ curl -s -X POST /predict -d @samples/patient.json  (UCI row 1, true label 0)
+{"prediction":0,"label":"No heart disease","confidence":0.5846,"probability_disease":0.4154,"model_name":"logistic_regression"}
+
+$ curl -s -X POST /predict/batch  (UCI rows 1 and 2; true labels 0 and 1)
+{"count":2,"predictions":[{"prediction":0,"label":"No heart disease","confidence":0.5846,"probability_disease":0.4154,"model_name":"logistic_regression"},{"prediction":1,"label":"Heart disease","confidence":0.9818,"probability_disease":0.9818,"model_name":"logistic_regression"}]}
+
+$ invalid thal=2 (old mirror code) -> expect 422
+HTTP 422
+
+$ curl -s localhost:8011/metrics | grep heart_
+heart_predictions_total{outcome="No heart disease"} 2.0
+heart_predictions_total{outcome="Heart disease"} 1.0
+heart_predictions_created{outcome="No heart disease"} 1.7923070173908184e+09
+heart_predictions_created{outcome="Heart disease"} 1.7923070174343376e+09
+heart_requests_total{endpoint="/health",status="200"} 1.0
+heart_requests_total{endpoint="/",status="200"} 1.0
+heart_requests_total{endpoint="/predict",status="200"} 1.0
+heart_requests_total{endpoint="/predict/batch",status="200"} 1.0
