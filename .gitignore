@@ -19,3 +19,4 @@ mlartifacts/
 # If you prefer a lean repo, uncomment:
 # model_artifacts/
 # data/*.csv
+video_frames/
