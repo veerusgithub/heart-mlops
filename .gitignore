@@ -20,3 +20,4 @@ mlartifacts/
 # model_artifacts/
 # data/*.csv
 video_frames/
+video_frames_terminal/
