@@ -15,9 +15,9 @@ mlartifacts/
 # OS
 .DS_Store
 
-# Keep model_artifacts, data CSVs and figures tracked (needed for grading/serving).
-# If you prefer a lean repo, uncomment:
-# model_artifacts/
-# data/*.csv
+# Raw UCI download directory
+heart+disease/
+
+# Video generation temp frames
 video_frames/
 video_frames_terminal/
