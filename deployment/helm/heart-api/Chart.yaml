@@ -1,0 +1,15 @@
+apiVersion: v2
+name: heart-api
+description: Heart Disease Prediction MLOps API — Helm chart for Kubernetes deployment
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Pentela Veeranjineyulu
+    email: areanuradha93@gmail.com
+keywords:
+  - mlops
+  - machine-learning
+  - heart-disease
+  - fastapi
+  - kubernetes

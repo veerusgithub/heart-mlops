@@ -398,6 +398,30 @@ async function build() {
   content.push(boldPara("ingress.yaml — Ingress:", ""));
   content.push(para("  • nginx Ingress controller with host-based routing (heart-api.local)"));
   content.push(para("  • Rewrite-target annotation for clean URL routing"));
+
+  content.push(heading("8.2 Helm Chart", HeadingLevel.HEADING_2));
+  content.push(para(
+    "In addition to raw manifests, a Helm chart is provided at deployment/helm/heart-api/ for templated, configurable deployments. The chart packages all four Kubernetes resources (Deployment, Service, HPA, Ingress) with a single values.yaml that parameterises image, replicas, resources, autoscaling thresholds, probe paths, and Prometheus annotations."
+  ));
+  content.push(boldPara("Chart structure:", ""));
+  content.push(codePara("deployment/helm/heart-api/"));
+  content.push(codePara("├── Chart.yaml              # Chart metadata (v1.0.0)"));
+  content.push(codePara("├── values.yaml             # Default configuration values"));
+  content.push(codePara("└── templates/"));
+  content.push(codePara("    ├── _helpers.tpl        # Common label definitions"));
+  content.push(codePara("    ├── deployment.yaml     # Templated Deployment"));
+  content.push(codePara("    ├── service.yaml        # Templated Service"));
+  content.push(codePara("    ├── hpa.yaml            # Conditional HPA (autoscaling.enabled)"));
+  content.push(codePara("    └── ingress.yaml        # Conditional Ingress (ingress.enabled)"));
+  content.push(boldPara("Key values.yaml defaults: ", "replicaCount=2, service.type=LoadBalancer, autoscaling min=2 max=5 at 70% CPU, ingress host=heart-api.local, Prometheus scrape enabled."));
+  content.push(boldPara("Deploy with Helm:", ""));
+  content.push(codePara("helm install heart-api deployment/helm/heart-api/"));
+  content.push(codePara("helm install heart-api deployment/helm/heart-api/ --set image.tag=v2.0"));
+  content.push(para(
+    "The Helm chart provides the same deployment as the raw manifests but adds configurability — teams can override any value at install time without editing YAML files, making it suitable for multi-environment deployments (dev, staging, production)."
+  ));
+
+  content.push(heading("8.3 CI Validation", HeadingLevel.HEADING_2));
   content.push(para(
     "The CI pipeline (Job 5) validates the full deployment: kind cluster creation → image loading → kubectl apply → rollout status → port-forward → health check → prediction → batch prediction → input validation (thal=2 → 422). Pod logs are collected as artifacts for debugging."
   ));
@@ -461,11 +485,13 @@ async function build() {
   content.push(codePara("docker run -d --name heart-api -p 8000:8000 heart-api:latest"));
   content.push(codePara('curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" \\'));
   content.push(codePara('  -d \'{"age":63,"sex":1,"cp":1,"trestbps":145,"chol":233,"fbs":1,"restecg":2,"thalach":150,"exang":0,"oldpeak":2.3,"slope":3,"ca":0,"thal":6}\''));
-  content.push(boldPara("Kubernetes:", ""));
+  content.push(boldPara("Kubernetes (raw manifests):", ""));
   content.push(codePara("kubectl apply -f deployment/deployment.yaml"));
   content.push(codePara("kubectl apply -f deployment/service.yaml"));
   content.push(codePara("kubectl apply -f deployment/hpa.yaml"));
   content.push(codePara("kubectl rollout status deployment/heart-api"));
+  content.push(boldPara("Kubernetes (Helm chart):", ""));
+  content.push(codePara("helm install heart-api deployment/helm/heart-api/"));
   content.push(boldPara("Monitoring:", ""));
   content.push(codePara("docker compose -f monitoring/docker-compose.monitoring.yml up --build"));
 
@@ -482,11 +508,15 @@ async function build() {
     "├── requirements.txt                        # Full development dependencies",
     "├── requirements-serve.txt                  # Minimal serving dependencies",
     "├── data/                                   # Raw and cleaned datasets",
-    "├── deployment/                             # K8s manifests",
+    "├── deployment/                             # K8s manifests & Helm chart",
     "│   ├── deployment.yaml                     #   2-replica Deployment",
     "│   ├── service.yaml                        #   LoadBalancer Service",
     "│   ├── hpa.yaml                            #   HPA (2-5 pods, 70% CPU)",
-    "│   └── ingress.yaml                        #   nginx Ingress",
+    "│   ├── ingress.yaml                        #   nginx Ingress",
+    "│   └── helm/heart-api/                     #   Helm chart",
+    "│       ├── Chart.yaml                      #     Chart metadata",
+    "│       ├── values.yaml                     #     Default values",
+    "│       └── templates/                      #     Templated manifests",
     "├── model_artifacts/                        # Trained model + metadata",
     "│   ├── model.joblib                        #   Fitted sklearn Pipeline",
     "│   ├── feature_schema.json                 #   Feature definitions",
